@@ -1,0 +1,705 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="keywords" content="富士山,富士登山,富士登山道,富士山麓,富士山観光地">
+    <meta name="description" content="富士山麓3D立体地図を使ったナビゲーションシステムです。">
+    <title>富士山麓3D-NAVI</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <style>
+        
+        body {
+            margin: 0;
+            overflow: hidden;
+            font-family: sans-serif;
+            -webkit-user-select: none;
+            user-select: none;
+        }
+        #canvas-container {
+            width: 100vw;
+            height: 100vh;
+        }
+        
+        
+        #loading-screen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background-color: #f0f0f0;
+            z-index: 1000;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            transition: opacity 0.5s ease, visibility 0.5s;
+        }
+        .spinner {
+            width: 50px;
+            height: 50px;
+            border: 5px solid rgba(0, 102, 204, 0.2);
+            border-top: 5px solid #0066cc;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-bottom: 20px;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        #loading-text {
+            font-size: 14px;
+            font-weight: bold;
+            color: #333;
+            margin-bottom: 8px;
+            text-align: center;
+            padding: 0 10px;
+        }
+        #loading-bar-container {
+            width: 200px;
+            height: 6px;
+            background-color: #ddd;
+            border-radius: 3px;
+            overflow: hidden;
+        }
+        #loading-bar {
+            width: 0%;
+            height: 100%;
+            background-color: #0066cc;
+            transition: width 0.1s ease;
+        }
+
+        
+        #ui-container {
+            position: absolute;
+            bottom: 35px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(255, 255, 255, 0.95);
+            padding: 10px;
+            border-radius: 12px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            grid-template-rows: repeat(2, auto);
+            gap: 8px;
+            z-index: 10;
+            width: 95%;
+            max-width: 500px;
+            box-sizing: border-box;
+        }
+        .ui-group {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 4px;
+            background: rgba(0, 0, 0, 0.03);
+            padding: 6px 4px;
+            border-radius: 8px;
+            position: relative;
+        }
+        .ui-group label {
+            font-size: 11px;
+            font-weight: bold;
+            color: #333;
+            text-align: center;
+            white-space: nowrap;
+        }
+        .slider {
+            width: 100%;
+            height: 8px;
+            -webkit-appearance: none;
+            background: #ddd;
+            outline: none;
+            border-radius: 5px;
+            margin: 4px 0;
+        }
+        .slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: #0066cc;
+            cursor: pointer;
+        }
+        .slider::-moz-range-thumb {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: #0066cc;
+            cursor: pointer;
+        }
+
+        
+        .nav-btn {
+            width: 100%;
+            height: 30px;
+            background-color: #ffffff;
+            border: 1px solid #ccc;
+            border-radius: 6px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: background-color 0.2s, transform 0.1s;
+            padding: 0;
+        }
+        .nav-btn:hover { background-color: #f4f4f4; }
+        .nav-btn:active { background-color: #e8e8e8; transform: scale(0.98); }
+        .nav-btn svg { width: 18px; height: 18px; fill: #444444; transition: fill 0.2s; }
+        
+        
+        .nav-btn.active {
+            background-color: #ffe6e6;
+            border-color: #cc0000;
+        }
+        .nav-btn.active svg {
+            fill: #cc0000;
+        }
+
+       
+        .credit {
+            position: absolute;
+            bottom: 5px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 11px;
+            color: #222222;
+            padding: 2px 5px;
+            z-index: 10;
+            text-shadow: 
+                1px  1px 0px #fff,
+               -1px -1px 0px #fff,
+                1px -1px 0px #fff,
+               -1px  1px 0px #fff,
+                0px  1px 0px #fff,
+                0px -1px 0px #fff,
+                1px  0px 0px #fff,
+               -1px  0px 0px #fff;
+            white-space: nowrap;
+        }
+        .credit a {
+            color: #0055aa;
+            text-decoration: none;
+            font-weight: bold;
+        }
+        .credit a:hover {
+            text-decoration: underline;
+        }
+
+        
+        @media (max-width: 500px) {
+            #ui-container { gap: 4px; padding: 6px; bottom: 30px; }
+            .ui-group { padding: 4px 2px; gap: 2px; }
+            .ui-group label { font-size: 9px; }
+            .slider::-webkit-slider-thumb { width: 18px; height: 18px; }
+            .slider::-moz-range-thumb { width: 18px; height: 18px; }
+            .nav-btn { height: 26px; }
+            .nav-btn svg { width: 14px; height: 14px; }
+            .credit { bottom: 5px; }
+        }
+    </style>
+    <!-- Three.js CDN -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+</head>
+<body>
+
+   
+    <div id="loading-screen">
+        <div class="spinner"></div>
+        <div id="loading-text">3D地図データを読み込み中... (0%)</div>
+        <div id="loading-bar-container">
+            <div id="loading-bar"></div>
+        </div>
+    </div>
+
+    
+    <div id="canvas-container"></div>
+
+    
+    <div id="ui-container">
+        
+        <div class="ui-group">
+            <label id="label-rotate" for="rotate-slider">水平回転</label>
+            <input type="range" id="rotate-slider" class="slider" min="0" max="360" value="0">
+        </div>
+        <div class="ui-group">
+            <label id="label-height" for="height-slider">上下移動</label>
+            <input type="range" id="height-slider" class="slider" min="-100" max="150" value="-100">
+        </div>
+        <div class="ui-group">
+            <label id="label-pitch" for="pitch-slider">仰角</label>
+            <input type="range" id="pitch-slider" class="slider" min="0" max="90" value="30">
+        </div>
+
+        
+        <div class="ui-group">
+            <label id="label-zoom" for="zoom-slider">拡大縮小</label>
+            <input type="range" id="zoom-slider" class="slider" min="80" max="600" value="80">
+        </div>
+        <div class="ui-group">
+            <label id="label-opacity" for="opacity-slider">画像透過度:50％</label>
+            <input type="range" id="opacity-slider" class="slider" min="0" max="100" value="50">
+        </div>
+        <div class="ui-group">
+            <label id="label-geolocation">現在位置</label>
+            <button id="btn-geolocation" class="nav-btn">
+                <svg viewBox="0 0 24 24">
+                    <path d="M12 8c-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4-1.79-4-4-4zm8.94 3c-.46-4.17-3.77-7.48-7.94-7.94V1c0-.55-.45-1-1-1s-1 .45-1 1v2.06C6.83 3.52 3.52 6.83 3.06 11H1c-.55 0-1 .45-1 1s.45 1 1 1h2.06c.46 4.17 3.77 7.48 7.94 7.94V23c0 .55.45 1 1 1s1-.45 1-1v-2.06c4.17-.46 7.48-3.77 7.94-7.94H23c.55 0 1-.45 1-1s-.45-1-1-1h-2.06zM12 19c-3.87 0-7-3.13-7-7s3.13-7 7-7 7 3.13 7 7-3.13 7-7 7z"/>
+                </svg>
+            </button>
+        </div>
+    </div>
+
+    
+    <div class="credit">
+        <a href="https://maps.gsi.go.jp/development/ichiran.html" target="_blank">地理院タイル</a>をもとに<a href="http://fujisanwalker.blog.fc2.com/" target="_blank">富士山Walker</a>が作成
+    </div>
+
+    <script>
+       
+        const bounds = {
+            nw: { lat: 35.46066996213613, lng: 138.515625 },
+            se: { lat: 35.17380831799959, lng: 138.8671875 }
+        };
+
+        const overlayImgUrl = "https://shibakin507.github.io/-NAVI/data/hazardallmap.jpg";
+        const overlayBounds = {
+            nw: { lat: 35.5318, lng: 138.5158 },
+            se: { lat: 35.1015, lng: 138.9554 }
+        };
+
+        let centerCoords = { lat: 35.3606, lng: 138.7275 };
+        const ZOOM = 12;
+        const STD_ZOOM = ZOOM + 2; 
+        const ELEVATION_SCALE = 0.02; 
+
+        const OPACITY_HILLSHADE = 0.40; 
+        const OPACITY_STD = 1.00;       
+
+       
+        function lngToTileX(lng, zoom) { 
+            return Math.floor((lng + 180) / 360 * Math.pow(2, zoom)); 
+        }
+        function latToTileY(lat, zoom) { 
+            return Math.floor((1 - Math.log(Math.tan(lat * Math.PI / 180) + 1 / Math.cos(lat * Math.PI / 180)) / Math.PI) / 2 * Math.pow(2, zoom)); 
+        }
+        function tileXToLng(x, zoom) { 
+            return x / Math.pow(2, zoom) * 360 - 180; 
+        }
+        function tileYToLat(y, zoom) {
+            const n = Math.PI - 2 * Math.PI * y / Math.pow(2, zoom);
+            return 180 / Math.PI * Math.atan(0.5 * (Math.exp(n) - Math.exp(-n)));
+        }
+
+        
+        const minX = lngToTileX(bounds.nw.lng, ZOOM);
+        const maxX = lngToTileX(bounds.se.lng, ZOOM);
+        const minY = latToTileY(bounds.nw.lat, ZOOM);
+        const maxY = latToTileY(bounds.se.lat, ZOOM);
+
+        const tileWidthCount = maxX - minX + 1;
+        const tileHeightCount = maxY - minY + 1;
+
+        const totalLngWidth = tileXToLng(maxX + 1, ZOOM) - tileXToLng(minX, ZOOM);
+        const totalLatHeight = tileYToLat(minY, ZOOM) - tileYToLat(maxY + 1, ZOOM);
+        
+        const sceneWidth = tileWidthCount * 100;
+        const sceneHeight = tileHeightCount * 100;
+
+        const minLng = tileXToLng(minX, ZOOM);
+        const maxLat = tileYToLat(minY, ZOOM);
+
+        function coordsToScenePos(lat, lng) {
+            const x = ((lng - minLng) / totalLngWidth) * sceneWidth - (sceneWidth / 2);
+            const z = ((maxLat - lat) / totalLatHeight) * sceneHeight - (sceneHeight / 2);
+            return { x, z };
+        }
+
+        
+        const container = document.getElementById('canvas-container');
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0xf0f0f0);
+
+        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 5000);
+        
+        const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2)); 
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        container.appendChild(renderer.domElement);
+
+        
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+        scene.add(ambientLight);
+        const dirLight = new THREE.DirectionalLight(0xffffff, 0.5);
+        dirLight.position.set(200, 500, 200);
+        scene.add(dirLight);
+
+        
+        const segmentsX = tileWidthCount * 24; 
+        const segmentsY = tileHeightCount * 24;
+        const geometry = new THREE.PlaneGeometry(sceneWidth, sceneHeight, segmentsX, segmentsY);
+        geometry.rotateX(-Math.PI / 2);
+
+        const material = new THREE.MeshStandardMaterial({
+            color: 0xffffff, roughness: 0.8, metalness: 0.1, side: THREE.DoubleSide
+        });
+        const terrainMesh = new THREE.Mesh(geometry, material);
+        scene.add(terrainMesh);
+
+        
+        let currentPosGroup = null; 
+        let arrowMesh = null;       
+
+        function createCoolMarker() {
+            currentPosGroup = new THREE.Group();
+
+           
+            const circleGeo = new THREE.RingGeometry(0, 5, 32);
+            const circleMat = new THREE.MeshBasicMaterial({ color: 0xcc0000, side: THREE.DoubleSide, transparent: true, opacity: 0.4 });
+            const circleMesh = new THREE.Mesh(circleGeo, circleMat);
+            circleMesh.rotateX(-Math.PI / 2); 
+            currentPosGroup.add(circleMesh);
+
+           
+            const edgeGeo = new THREE.RingGeometry(4.8, 5, 32);
+            const edgeMat = new THREE.MeshBasicMaterial({ color: 0xff5555, side: THREE.DoubleSide });
+            const edgeMesh = new THREE.Mesh(edgeGeo, edgeMat);
+            edgeMesh.rotateX(-Math.PI / 2);
+            currentPosGroup.add(edgeMesh);
+
+            
+            const coneGeo = new THREE.ConeGeometry(1.8, 6, 4);
+            const coneMat = new THREE.MeshStandardMaterial({ 
+                color: 0xff0000, roughness: 0.3, metalness: 0.8, emissive: 0x550000 
+            });
+            arrowMesh = new THREE.Mesh(coneGeo, coneMat);
+            arrowMesh.rotateX(Math.PI); 
+            arrowMesh.position.y = 6.0; 
+            currentPosGroup.add(arrowMesh);
+
+            currentPosGroup.visible = false; 
+            scene.add(currentPosGroup);
+        }
+
+        
+        const rawWidth = tileWidthCount * 1024;
+        const rawHeight = tileHeightCount * 1024;
+        const MAX_CANVAS_SIZE = 2560; 
+        
+        let scaleFactor = 1.0;
+        if (rawWidth > MAX_CANVAS_SIZE || rawHeight > MAX_CANVAS_SIZE) {
+            scaleFactor = MAX_CANVAS_SIZE / Math.max(rawWidth, rawHeight);
+        }
+
+        
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        canvas.width = Math.floor(rawWidth * scaleFactor); 
+        canvas.height = Math.floor(rawHeight * scaleFactor);
+
+        const hillshadeCanvas = document.createElement('canvas');
+        const hillshadeCtx = hillshadeCanvas.getContext('2d');
+        hillshadeCanvas.width = canvas.width; 
+        hillshadeCanvas.height = canvas.height;
+
+        const stdCanvas = document.createElement('canvas');
+        const stdCtx = stdCanvas.getContext('2d');
+        stdCanvas.width = canvas.width; 
+        stdCanvas.height = canvas.height;
+
+        const demCanvas = document.createElement('canvas');
+        const demCtx = demCanvas.getContext('2d');
+        demCanvas.width = tileWidthCount * 256; 
+        demCanvas.height = tileHeightCount * 256;
+
+        let loadedCount = 0;
+        const totalTiles = tileWidthCount * tileHeightCount;
+        const totalTasks = (totalTiles * 2) + (totalTiles * 16) + 1; 
+
+        let targetPos = coordsToScenePos(centerCoords.lat, centerCoords.lng);
+        let baseTargetY = 15; 
+        let demDataGlobal = null; 
+
+        
+        const imgOverlay = new Image();
+        let texture = null;
+        imgOverlay.crossOrigin = "anonymous";
+        imgOverlay.src = overlayImgUrl;
+        imgOverlay.onload = () => { checkProgress(); };
+
+        
+        function updateTextureCanvas() {
+            const currentOpacity = parseFloat(document.getElementById('opacity-slider').value) / 100;
+            
+            ctx.fillStyle = "#ffffff"; 
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            
+            ctx.globalAlpha = OPACITY_HILLSHADE; 
+            ctx.drawImage(hillshadeCanvas, 0, 0, canvas.width, canvas.height);
+            
+            
+            ctx.globalAlpha = OPACITY_STD; 
+            ctx.globalCompositeOperation = "multiply"; 
+            ctx.drawImage(stdCanvas, 0, 0, canvas.width, canvas.height);
+            
+            
+            ctx.globalCompositeOperation = "source-over"; 
+            ctx.globalAlpha = 1.0;
+
+            const startX = (((overlayBounds.nw.lng - minLng) / totalLngWidth) * rawWidth) * scaleFactor;
+            const startY = (((maxLat - overlayBounds.nw.lat) / totalLatHeight) * rawHeight) * scaleFactor;
+            const endX = (((overlayBounds.se.lng - minLng) / totalLngWidth) * rawWidth) * scaleFactor;
+            const endY = (((maxLat - overlayBounds.se.lat) / totalLatHeight) * rawHeight) * scaleFactor;
+            
+            ctx.globalAlpha = currentOpacity; 
+            ctx.drawImage(imgOverlay, startX, startY, endX - startX, endY - startY);
+            ctx.globalAlpha = 1.0; 
+
+            if (texture) texture.needsUpdate = true;
+        }
+
+        
+        for (let ty = minY; ty <= maxY; ty++) {
+            for (let tx = minX; tx <= maxX; tx++) {
+                const offsetX2x = (tx - minX) * 1024 * scaleFactor; 
+                const offsetY2x = (ty - minY) * 1024 * scaleFactor;
+                const size2x = 1024 * scaleFactor;
+                const offsetX1x = (tx - minX) * 256;  
+                const offsetY1x = (ty - minY) * 256;
+
+                
+                const imgHillshade = new Image();
+                imgHillshade.crossOrigin = "anonymous";
+                imgHillshade.src = `https://cyberjapandata.gsi.go.jp/xyz/hillshademap/${ZOOM}/${tx}/${ty}.png`;
+                imgHillshade.onload = () => { 
+                    hillshadeCtx.drawImage(imgHillshade, offsetX2x, offsetY2x, size2x, size2x); 
+                    checkProgress(); 
+                };
+
+                
+                const imgDem = new Image();
+                imgDem.crossOrigin = "anonymous";
+                imgDem.src = `https://cyberjapandata.gsi.go.jp/xyz/dem_png/${ZOOM}/${tx}/${ty}.png`;
+                imgDem.onload = () => { 
+                    demCtx.drawImage(imgDem, offsetX1x, offsetY1x, 256, 256); 
+                    checkProgress(); 
+                };
+
+                
+                const pMinX = tx * 4; 
+                const pMinY = ty * 4;
+                for (let dy = 0; dy < 4; dy++) {
+                    for (let dx = 0; dx < 4; dx++) {
+                        const subOffsetX = offsetX2x + (dx * 256 * scaleFactor);
+                        const subOffsetY = offsetY2x + (dy * 256 * scaleFactor);
+                        const subSize = 256 * scaleFactor;
+
+                        const imgStd = new Image();
+                        imgStd.crossOrigin = "anonymous";
+                        imgStd.src = `https://cyberjapandata.gsi.go.jp/xyz/std/${STD_ZOOM}/${pMinX + dx}/${pMinY + dy}.png`;
+                        imgStd.onload = () => { 
+                            stdCtx.drawImage(imgStd, subOffsetX, subOffsetY, subSize, subSize); 
+                            checkProgress(); 
+                        };
+                    }
+                }
+            }
+        }
+
+        
+        function checkProgress() {
+            loadedCount++;
+            const percent = Math.floor((loadedCount / totalTasks) * 100);
+            document.getElementById('loading-text').innerText = `3D地図データを読み込み中... (${percent}%)`;
+            document.getElementById('loading-bar').style.width = `${percent}%`;
+
+            if (loadedCount === totalTasks) { 
+                updateTextureCanvas(); 
+                applyDataToTerrain(); 
+                
+                const screen = document.getElementById('loading-screen');
+                screen.style.opacity = '0';
+                setTimeout(() => { screen.style.visibility = 'hidden'; }, 500);
+            }
+        }
+
+        
+        function getElevation(r, g, b) {
+            const x = r * 65536 + g * 256 + b;
+            return x < 8388608 ? x * 0.01 : (x - 16777216) * 0.01;
+        }
+
+        function getTerrainYAt(x, z) {
+            if (!demDataGlobal) return 15;
+            const percentX = (x + sceneWidth / 2) / sceneWidth;
+            const percentY = (z + sceneHeight / 2) / sceneHeight;
+            
+            const pixelX = Math.max(0, Math.min(Math.floor(percentX * demCanvas.width), demCanvas.width - 2));
+            const pixelY = Math.max(0, Math.min(Math.floor(percentY * demCanvas.height), demCanvas.height - 2));
+            const idx = (pixelY * demCanvas.width + pixelX) * 4;
+            
+            if (demDataGlobal[idx] === undefined || (demDataGlobal[idx] === 128 && demDataGlobal[idx+1] === 0 && demDataGlobal[idx+2] === 0)) {
+                return 0; 
+            }
+            return getElevation(demDataGlobal[idx], demDataGlobal[idx+1], demDataGlobal[idx+2]) * ELEVATION_SCALE;
+        }
+
+        function applyDataToTerrain() {
+            texture = new THREE.CanvasTexture(canvas);
+            texture.minFilter = THREE.LinearFilter;
+            material.map = texture; 
+            material.needsUpdate = true;
+
+            demDataGlobal = demCtx.getImageData(0, 0, demCanvas.width, demCanvas.height).data;
+            const posAttr = geometry.attributes.position;
+            
+            for (let i = 0; i < posAttr.count; i++) { 
+                posAttr.setY(i, getTerrainYAt(posAttr.getX(i), posAttr.getZ(i))); 
+            }
+            
+            baseTargetY = getTerrainYAt(targetPos.x, targetPos.z);
+            geometry.computeVertexNormals(); 
+            posAttr.needsUpdate = true;
+
+            createCoolMarker(); 
+            updateCameraPosition();
+        }
+
+        
+        const rotateSlider = document.getElementById('rotate-slider');
+        const heightSlider = document.getElementById('height-slider');
+        const pitchSlider = document.getElementById('pitch-slider');
+        const zoomSlider = document.getElementById('zoom-slider');
+        const opacitySlider = document.getElementById('opacity-slider');
+
+        const labelPitch = document.getElementById('label-pitch');
+        const labelOpacity = document.getElementById('label-opacity');
+        
+        function updateCameraPosition() {
+            
+            const cameraDistance = 680 - parseFloat(zoomSlider.value);         
+            const pitchRad = (parseFloat(pitchSlider.value) * Math.PI) / 180;
+            
+            const verticalOffset = cameraDistance * Math.sin(pitchRad); 
+            const horizontalRadius = cameraDistance * Math.cos(pitchRad);
+            const angleRad = (parseFloat(rotateSlider.value) * Math.PI) / 180;
+            const currentTargetY = baseTargetY + parseFloat(heightSlider.value);
+
+            camera.position.set(
+                targetPos.x + horizontalRadius * Math.sin(angleRad),
+                currentTargetY + verticalOffset,
+                targetPos.z + horizontalRadius * Math.cos(angleRad)
+            );
+            camera.lookAt(targetPos.x, currentTargetY, targetPos.z);
+
+            
+            labelPitch.innerText = `仰角:${pitchSlider.value}°`;
+        }
+
+        
+        rotateSlider.addEventListener('input', updateCameraPosition);
+        heightSlider.addEventListener('input', updateCameraPosition);
+        pitchSlider.addEventListener('input', updateCameraPosition);
+        zoomSlider.addEventListener('input', updateCameraPosition);
+        opacitySlider.addEventListener('input', () => {
+            labelOpacity.innerText = `画像透過度:${opacitySlider.value}%`; 
+            updateTextureCanvas();
+        });
+
+        
+        let watchId = null; 
+        const geoBtn = document.getElementById('btn-geolocation');
+        const geoLabel = document.getElementById('label-geolocation');
+
+        geoBtn.addEventListener('click', () => {
+            if (watchId !== null) {
+                
+                navigator.geolocation.clearWatch(watchId);
+                watchId = null;
+                geoBtn.classList.remove('active');
+                geoLabel.innerText = "現在位置";
+                geoLabel.style.color = "#333";
+                if (currentPosGroup) currentPosGroup.visible = false;
+                return;
+            }
+
+            if (!navigator.geolocation) {
+                geoLabel.innerText = "非対応端末";
+                geoLabel.style.color = "#cc0000";
+                return;
+            }
+
+            
+            geoBtn.classList.add('active');
+            geoLabel.innerText = "追跡中🔴";
+            geoLabel.style.color = "#cc0000";
+
+            watchId = navigator.geolocation.watchPosition(
+                (position) => {
+                    const userLat = position.coords.latitude;
+                    const userLng = position.coords.longitude;
+
+                    
+                    if (userLat > bounds.nw.lat || userLat < bounds.se.lat || 
+                        userLng < bounds.nw.lng || userLng > bounds.se.lng) {
+                        geoLabel.innerText = "エリア外";
+                        geoLabel.style.color = "#cc0000";
+                        navigator.geolocation.clearWatch(watchId);
+                        watchId = null;
+                        geoBtn.classList.remove('active');
+                        if (currentPosGroup) currentPosGroup.visible = false;
+                        return;
+                    }
+
+                    geoLabel.innerText = "追跡中🔴";
+                    geoLabel.style.color = "#cc0000";
+
+                    const newPos = coordsToScenePos(userLat, userLng);
+                    targetPos.x = newPos.x;
+                    targetPos.z = newPos.z;
+                    baseTargetY = getTerrainYAt(targetPos.x, targetPos.z);
+
+                    if (currentPosGroup) {
+                        currentPosGroup.position.set(targetPos.x, baseTargetY, targetPos.z);
+                        currentPosGroup.visible = true;
+                    }
+                    updateCameraPosition();
+                },
+                (error) => {
+                    
+                    geoLabel.innerText = "GPSエラー";
+                    geoLabel.style.color = "#cc0000";
+                    navigator.geolocation.clearWatch(watchId);
+                    watchId = null;
+                    geoBtn.classList.remove('active');
+                    if (currentPosGroup) currentPosGroup.visible = false;
+                },
+                { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+            );
+        });
+
+        
+        function animate() {
+            requestAnimationFrame(animate);
+            
+            if (currentPosGroup && currentPosGroup.visible) {
+                const time = Date.now() * 0.003;
+                arrowMesh.position.y = 6.0 + Math.sin(time) * 0.4;
+            }
+            renderer.render(scene, camera);
+        }
+        animate();
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+    </script>
+</body>
+</html>
