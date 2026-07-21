@@ -1,0 +1,989 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="keywords" content="ツキノワグマ出没情報,富士山,熊,クマ出没,富士登山,クマ情報">
+    <meta name="description" content="地理院タイルと静岡県ツキノワグマ出没情報をもとに3D立体地図上の出没場所にマークを入れました。">
+    <title>富士宮市内クマ出没3D立体マップ</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            font-family: sans-serif;
+            -webkit-user-select: none;
+            user-select: none;
+        }
+        #canvas-container {
+            width: 100vw;
+            height: 100vh;
+        }
+        
+        #loading-screen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background-color: #f0f0f0;
+            z-index: 1000;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            transition: opacity 0.5s ease, visibility 0.5s;
+        }
+        .spinner {
+            width: 50px;
+            height: 50px;
+            border: 5px solid rgba(0, 102, 204, 0.2);
+            border-top: 5px solid #cc0000;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-bottom: 20px;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        #loading-text {
+            font-size: 14px;
+            font-weight: bold;
+            color: #333;
+            margin-bottom: 8px;
+            text-align: center;
+            padding: 0 10px;
+        }
+        #loading-bar-container {
+            width: 200px;
+            height: 6px;
+            background-color: #ddd;
+            border-radius: 3px;
+            overflow: hidden;
+        }
+        #loading-bar {
+            width: 0%;
+            height: 100%;
+            background-color: #cc0000;
+            transition: width 0.1s ease;
+        }
+
+        
+        #toggle-ui-btn {
+            position: absolute;
+            top: 15px;
+            left: 15px;
+            width: 40px;
+            height: 40px;
+            background: rgba(255, 255, 255, 0.95);
+            border: 1px solid #ccc;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+            cursor: pointer;
+            z-index: 100;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: background-color 0.2s, transform 0.1s;
+        }
+        #toggle-ui-btn:hover { background-color: #f4f4f4; }
+        #toggle-ui-btn:active { transform: scale(0.95); }
+        #toggle-ui-btn svg { width: 20px; height: 20px; fill: #444444; }
+
+        
+        #ui-container {
+            position: absolute;
+            bottom: 35px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(255, 255, 255, 0.95);
+            padding: 10px;
+            border-radius: 12px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+            display: grid;
+            grid-template-columns: repeat(3, 1fr); /* 3列構成 */
+            grid-template-rows: repeat(2, 1fr);    /* 2行構成 */
+            gap: 8px;
+            z-index: 10;
+            width: 95%;
+            max-width: 520px;
+            box-sizing: border-box;
+            transition: opacity 0.3s ease, transform 0.3s ease, visibility 0.3s;
+        }
+        
+        #ui-container.hidden {
+            opacity: 0;
+            visibility: hidden;
+            transform: translateX(-50%) translateY(20px);
+            pointer-events: none;
+        }
+
+        .ui-group {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 4px;
+            background: rgba(0, 0, 0, 0.03);
+            padding: 6px 4px;
+            border-radius: 8px;
+            box-sizing: border-box;
+        }
+        .ui-group label {
+            font-size: 11px;
+            font-weight: bold;
+            color: #333;
+            text-align: center;
+            white-space: nowrap;
+        }
+
+        .slider {
+            width: 100%;
+            height: 8px;
+            -webkit-appearance: none;
+            background: #ddd;
+            outline: none;
+            border-radius: 5px;
+            margin: 4px 0;
+        }
+        .slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: #00d0ff;
+            border: 1px solid #00aacf;
+            cursor: pointer;
+        }
+        .slider::-moz-range-thumb {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: #00d0ff; 
+            border: 1px solid #00aacf;
+            cursor: pointer;
+        }
+
+        
+        .split-buttons-container {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            width: 100%;
+            gap: 4px;
+            height: 100%;
+            align-items: center;
+        }
+
+        .nav-btn {
+            width: 100%;
+            height: 34px; 
+            background-color: #ffffff;
+            border: 1px solid #ccc;
+            border-radius: 6px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0 4px;
+            font-size: 11px;
+            font-weight: bold;
+            color: #444444;
+            transition: background-color 0.2s, transform 0.1s, color 0.2s;
+            box-sizing: border-box;
+            white-space: nowrap;
+        }
+        .nav-btn:hover { background-color: #f4f4f4; }
+        .nav-btn:active { background-color: #e8e8e8; transform: scale(0.95); }
+        
+        .nav-btn.active {
+            background-color: #ffe6e6;
+            border-color: #cc0000;
+            color: #cc0000;
+        }
+
+        .credit {
+            position: absolute;
+            bottom: 5px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 11px;
+            color: #222222;
+            padding: 2px 5px;
+            z-index: 10;
+            text-shadow: 
+                1px  1px 0px #fff,
+               -1px -1px 0px #fff,
+                1px -1px 0px #fff,
+               -1px  1px 0px #fff,
+                0px  1px 0px #fff,
+                0px -1px 0px #fff,
+                1px  0px 0px #fff,
+               -1px  0px 0px #fff;
+            white-space: nowrap;
+        }
+        .credit a {
+            color: #0055aa;
+            text-decoration: none;
+            font-weight: bold;
+        }
+        .credit a:hover {
+            text-decoration: underline;
+        }
+
+        
+        #bear-popup {
+            position: absolute;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%) translateY(-20px);
+            background: rgba(255, 255, 255, 0.98);
+            border-left: 6px solid #d9534f;
+            border-radius: 8px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.35);
+            padding: 15px 40px 15px 15px;
+            z-index: 2000;
+            width: 85%;
+            max-width: 400px;
+            box-sizing: border-box;
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 0.3s, transform 0.3s, visibility 0.3s;
+            pointer-events: auto;
+        }
+        #bear-popup.show {
+            opacity: 1;
+            visibility: visible;
+            transform: translateX(-50%) translateY(0);
+        }
+        #bear-popup-content {
+            font-size: 13px;
+            line-height: 1.5;
+            color: #333;
+        }
+        #bear-popup-close {
+            position: absolute;
+            top: 8px;
+            right: 8px;
+            width: 24px;
+            height: 24px;
+            border: none;
+            background: #eee;
+            border-radius: 50%;
+            font-size: 12px;
+            font-weight: bold;
+            color: #666;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        #bear-popup-close:hover {
+            background: #ddd;
+        }
+
+        @media (max-width: 500px) {
+            #ui-container { gap: 4px; padding: 6px; bottom: 30px; }
+            .ui-group { padding: 4px 2px; gap: 2px; }
+            .ui-group label { font-size: 9px; }
+            .slider::-webkit-slider-thumb { width: 16px; height: 16px; }
+            .slider::-moz-range-thumb { width: 16px; height: 16px; }
+            .nav-btn { height: 28px; font-size: 9px; }
+            .credit { bottom: 5px; }
+            #bear-popup { top: 15px; width: 90%; }
+        }
+    </style>
+    <!-- Three.js CDN -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+</head>
+<body>
+
+    <div id="loading-screen">
+        <div class="spinner"></div>
+        <div id="loading-text">3D地図データを読み込み中... (0%)</div>
+        <div id="loading-bar-container">
+            <div id="loading-bar"></div>
+        </div>
+    </div>
+
+    
+    <div id="bear-popup">
+        <button id="bear-popup-close" title="閉じる">×</button>
+        <div id="bear-popup-content"></div>
+    </div>
+
+    
+    <button id="toggle-ui-btn" title="コントロールパネルの表示/非表示">
+        
+        <svg viewBox="0 0 24 24" id="icon-gear">
+            <path d="M19.43 12.98c.04-.32.07-.64.07-.98s-.03-.66-.07-.98l2.11-1.65c.19-.15.24-.42.12-.64l-2-3.46c-.12-.22-.39-.3-.61-.22l-2.49 1c-.52-.4-1.08-.73-1.69-.98l-.38-2.65C14.46 2.18 14.25 2 14 2h-4c-.25 0-.46.18-.49.42l-.38 2.65c-.61.25-1.17.59-1.69.98l-2.49-1c-.23-.09-.49 0-.61.22l-2 3.46c-.13.22-.07.49.12.64l2.11 1.65c-.04.32-.07.65-.07.98s.03.66.07.98l-2.11 1.65c-.19.15-.24.42-.12.64l2 3.46c.12.22.39.3.61.22l2.49-1c.52.4 1.08.73 1.69.98l.38 2.65c.03.24.24.42.49.42h4c.25 0 .46-.18.49-.42l.38-2.65c.61-.25 1.17-.59 1.69-.98l2.49 1c.23.09.49 0 .61-.22l2-3.46c.12-.22.07-.49-.12-.64l-2.11-1.65zM12 15.5c-1.93 0-3-1.57-3-3.5s1.07-3.5 3-3.5 3 1.57 3 3.5-1.07 3.5-3 3.5z"/>
+        </svg>
+    </button>
+
+    <div id="canvas-container"></div>
+
+    <div id="ui-container">
+        
+        <div class="ui-group">
+            <label id="label-rotate" for="rotate-slider">水平回転:360°</label>
+            <input type="range" id="rotate-slider" class="slider" min="0" max="720" value="360">
+        </div>
+
+        
+        <div class="ui-group">
+            <label id="label-height" for="height-slider">上下移動:-40</label>
+            <input type="range" id="height-slider" class="slider" min="-190" max="110" value="-40">
+        </div>
+
+        
+        <div class="ui-group">
+            <label id="label-pitch" for="pitch-slider">仰角:45°</label>
+            <input type="range" id="pitch-slider" class="slider" min="0" max="90" value="45">
+        </div>
+
+        
+        <div class="ui-group">
+            <label id="label-zoom" for="zoom-slider">拡大縮小:160</label>
+            <input type="range" id="zoom-slider" class="slider" min="-280" max="600" value="160">
+        </div>
+
+        
+        <div class="ui-group">
+            <label id="label-opacity" for="opacity-slider">画像透過度:50%</label>
+            <input type="range" id="opacity-slider" class="slider" min="0" max="100" value="50">
+        </div>
+        
+        
+        <div class="ui-group" style="padding: 4px 4px; justify-content: center;">
+            <div class="split-buttons-container">
+                <!-- 現在位置ボタン -->
+                <button id="btn-geolocation" class="nav-btn" title="現在位置の追跡">現在位置</button>
+                <!-- 非表示ボタン -->
+                <button id="btn-close-ui" class="nav-btn" title="パネルを格納する">非表示</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="credit">
+        <a href="https://maps.gsi.go.jp/development/ichiran.html" target="_blank">地理院タイル</a>と<a href="https://www.pref.shizuoka.jp/kurashikankyo/shizenkankyo/wild/1017680.html" target="_blank">静岡県の目撃情報</a>をもとに<a href="http://fujisanwalker.blog.fc2.com/" target="_blank">富士山Walker</a>が作成
+    </div>
+
+    <script>
+        const bounds = {
+            nw: { lat: 35.4450, lng: 138.5121 },
+            se: { lat: 35.1517, lng: 138.7423 }
+        };
+
+        const overlayImgUrl = "https://shibakin507.github.io/-NAVI/data/miyamap.jpg";
+        const overlayBounds = {
+            nw: { lat: 35.47815, lng: 138.4040 },
+            se: { lat: 35.0961, lng: 138.8335 }
+        };
+
+        let centerCoords = { lat: 35.2220, lng: 138.6217 };
+        
+        const ZOOM = 12; 
+        const STD_ZOOM = ZOOM + 2; 
+        const ELEVATION_SCALE = 0.02; 
+
+        const OPACITY_HILLSHADE = 0.40; 
+        const OPACITY_STD = 1.00;       
+
+        function lngToTileX(lng, zoom) { 
+            return Math.floor((lng + 180) / 360 * Math.pow(2, zoom)); 
+        }
+        function latToTileY(lat, zoom) { 
+            return Math.floor((1 - Math.log(Math.tan(lat * Math.PI / 180) + 1 / Math.cos(lat * Math.PI / 180)) / Math.PI) / 2 * Math.pow(2, zoom)); 
+        }
+        function tileXToLng(x, zoom) { 
+            return x / Math.pow(2, zoom) * 360 - 180; 
+        }
+        function tileYToLat(y, zoom) {
+            const n = Math.PI - 2 * Math.PI * y / Math.pow(2, zoom);
+            return 180 / Math.PI * Math.atan(0.5 * (Math.exp(n) - Math.exp(-n)));
+        }
+
+        const minX = lngToTileX(bounds.nw.lng, ZOOM);
+        const maxX = lngToTileX(bounds.se.lng, ZOOM);
+        const minY = latToTileY(bounds.nw.lat, ZOOM);
+        const maxY = latToTileY(bounds.se.lat, ZOOM);
+
+        const tileWidthCount = maxX - minX + 1;
+        const tileHeightCount = maxY - minY + 1;
+
+        const totalLngWidth = tileXToLng(maxX + 1, ZOOM) - tileXToLng(minX, ZOOM);
+        const totalLatHeight = tileYToLat(minY, ZOOM) - tileYToLat(maxY + 1, ZOOM);
+        
+        const sceneWidth = tileWidthCount * 100;
+        const sceneHeight = tileHeightCount * 100;
+
+        const minLng = tileXToLng(minX, ZOOM);
+        const maxLat = tileYToLat(minY, ZOOM);
+
+        function coordsToScenePos(lat, lng) {
+            const x = ((lng - minLng) / totalLngWidth) * sceneWidth - (sceneWidth / 2);
+            const z = ((maxLat - lat) / totalLatHeight) * sceneHeight - (sceneHeight / 2);
+            return { x, z };
+        }
+
+        const container = document.getElementById('canvas-container');
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0xf0f0f0);
+
+        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 25000);
+        
+        const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2)); 
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        container.appendChild(renderer.domElement);
+
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+        scene.add(ambientLight);
+        const dirLight = new THREE.DirectionalLight(0xffffff, 0.5);
+        dirLight.position.set(200, 500, 200);
+        scene.add(dirLight);
+
+        const segmentsX = tileWidthCount * 24; 
+        const segmentsY = tileHeightCount * 24;
+        const geometry = new THREE.PlaneGeometry(sceneWidth, sceneHeight, segmentsX, segmentsY);
+        geometry.rotateX(-Math.PI / 2);
+
+        const material = new THREE.MeshStandardMaterial({
+            color: 0xffffff, roughness: 0.8, metalness: 0.1, side: THREE.DoubleSide
+        });
+        const terrainMesh = new THREE.Mesh(geometry, material);
+        scene.add(terrainMesh);
+
+        let currentPosGroup = null; 
+        let arrowMesh = null;       
+
+        function createCoolMarker() {
+            currentPosGroup = new THREE.Group();
+
+            const circleGeo = new THREE.RingGeometry(0, 5, 32);
+            const circleMat = new THREE.MeshBasicMaterial({ color: 0xcc0000, side: THREE.DoubleSide, transparent: true, opacity: 0.4 });
+            const circleMesh = new THREE.Mesh(circleGeo, circleMat);
+            circleMesh.rotateX(-Math.PI / 2); 
+            currentPosGroup.add(circleMesh);
+
+            const edgeGeo = new THREE.RingGeometry(4.8, 5, 32);
+            const edgeMat = new THREE.MeshBasicMaterial({ color: 0xff5555, side: THREE.DoubleSide });
+            const edgeMesh = new THREE.Mesh(edgeGeo, edgeMat);
+            edgeMesh.rotateX(-Math.PI / 2);
+            currentPosGroup.add(edgeMesh);
+
+            const coneGeo = new THREE.ConeGeometry(1.8, 6, 4);
+            const coneMat = new THREE.MeshStandardMaterial({ 
+                color: 0xff0000, roughness: 0.3, metalness: 0.8, emissive: 0x550000 
+            });
+            arrowMesh = new THREE.Mesh(coneGeo, coneMat);
+            arrowMesh.rotateX(Math.PI); 
+            arrowMesh.position.y = 6.0; 
+            currentPosGroup.add(arrowMesh);
+
+            currentPosGroup.visible = false; 
+            scene.add(currentPosGroup);
+        }
+
+        // --- 富士宮市 令和7年〜令和8年7月13日まで クマ出没地点全データ（65箇所） ---
+        const bearSpots = [
+{lat: 35.365431,lng: 138.571954,note: "2026/4/2 富士宮市猪之頭</b><br>国立音大セミナーハウス入口 バス停 西側５０％ｍ" },
+{lat: 35.296483,lng: 138.704207,note: "2026/4/2 富士宮市粟倉</b><br>西臼塚駐車場 西側１ｋｍ" },
+{lat: 35.164776,lng: 138.538826,note: "2026/4/7 富士宮市内房</b><br>瓜島公民館南側５００ｍ付近" },
+{lat: 35.216207,lng: 138.655237,note: "2026/4/27 富士宮市杉田</b><br>杉田３区久保集会所 南西５０ｍ付近" },
+{lat: 35.208224,lng: 138.625043,note: "2026/5/16 富士宮市山本</b><br>潤井川河川敷グラウンド 南側２５０ｍ付近" },
+{lat: 35.156085,lng: 138.538498,note: "2026/5/20 富士宮市内房</b><br>県道７５号線清水区境付近" },
+{lat: 35.289442,lng: 138.622106,note: "2026/5/23 富士宮市北山</b><br>北山工業団地 北側２０ｍ付近" },
+{lat: 35.199641,lng: 138.561674,note: "2026/5/25 富士宮市長貫</b><br>川合踏切 北側付近" },
+{lat: 35.233084,lng: 138.640768,note: "2026/6/8 富士宮市大岩</b><br>忠霊塔付近" },
+{lat: 35.394691,lng: 138.564039,note: "2026/6/8 富士宮市麓</b><br>朝霧キャンプベースそらいろ付近" },
+{lat:35.347559,lng:138.564818,note:"2026/6/8富士宮市猪之頭</b><br>麓の「朝霧キャンプベースそらいろ付近」と同一のクマの可能性あり"},
+{lat:35.257846,lng:138.556736,note:"2026/6/17富士宮市上柚野</b><br>新柚野橋北側"},
+{lat:35.370794,lng:138.611685,note:"2026/6/28富士宮市人穴</b><br>人穴交差点南東側３００ｍ付近（足跡）"},
+{lat:35.218106,lng:138.537777,note:"2026/6/29富士宮市内房</b><br>橋上八幡宮南側４００ｍ付近"},
+{lat:35.26151,lng:138.619801,note:"2026/6/29富士宮市山宮</b><br>山宮ふじざくら球技場南側４００ｍ付近（足跡）"},
+{lat:35.187614,lng:138.611811,note:"2026/7/10富士宮市星山</b><br>明星山頂上展望台付近"},
+{lat:35.213274,lng:138.582513,note:"2026/7/13富士宮市安居山</b><br>宮バス「楓の丘」停留所南側付近"},
+{lat:35.250914,lng:138.661664,note:"2025/04/04富士宮市村山</b><br>市道大岩村山線村山浅間神社南側２００ｍ"},
+{lat:35.328935,lng:138.548437,note:"2025/04/14富士宮市佐折</b><br>天子の森オートキャンプ場"},
+{lat:35.194027,lng:138.551628,note:"2025/05/15富士宮市内房</b><br>尾崎地区内房小学校東側500m付近"},
+{lat:35.191131,lng:138.54742,note:"2025/05/20富士宮市内房</b><br>尾崎地区"},
+{lat:35.225316,lng:138.580007,note:"2025/06/09富士宮市大中里</b><br>安居山との市境付近"},
+{lat:35.372064,lng:138.562256,note:"2025/07/01富士宮市猪之頭</b><br>田貫湖畔（北側キャンプ場テントサイト西側）"},
+{lat:35.189589,lng:138.550672,note:"2025/07/08富士宮市内房</b><br>尾崎地区"},
+{lat:35.280529,lng:138.661708,note:"2025/07/12富士宮市粟倉</b><br>市道富士山麓線西臼塚から南南西方向へ約5.5km"},
+{lat:35.189565,lng:138.552267,note:"2025/07/14富士宮市内房</b><br>尾崎地区内房小学校東側500m付近"},
+{lat:35.202504,lng:138.614036,note:"2025/07/16富士宮市星山</b><br>明星山山頂から東へ５０ｍ付近"},
+{lat:35.286091,lng:138.534222,note:"2025/08/05富士宮市上稲子</b><br>池の谷区地内"},
+{lat:35.396423,lng:138.557658,note:"2025/08/15富士宮市麓</b><br>麓区地内"},
+{lat:35.175489,lng:138.541121,note:"2025/08/28富士宮市内房</b><br>瓜島地区"},
+{lat:35.310335,lng:138.607233,note:"2025/9/18富士宮市上井出</b><br>上井出区地内（白糸の滝から北東へ約１ｋｍ）"},
+{lat:35.326542,lng:138.722945,note:"2025/09/21富士宮市北山</b><br>スカイポート水ケ塚東２００ｍ"},
+{lat:35.230917,lng:138.55844,note:"2025/10/13富士宮市西山</b><br>西山区地内"},
+{lat:35.206072,lng:138.559279,note:"2025/10/14富士宮市長貫</b><br>川合地区（芝川沿い）"},
+{lat:35.205624,lng:138.564275,note:"2025/10/14富士宮市長貫</b><br>川合区"},
+{lat:35.230776,lng:138.567195,note:"2025/10/18富士宮市西山</b><br>西山区"},
+{lat:35.245551,lng:138.56534,note:"2025/10/18富士宮市大鹿窪</b><br>大鹿窪地区（大鹿窪芝川線の交差点から東側約３００ｍ付近）"},
+{lat:35.221754,lng:138.536624,note:"2025/10/20富士宮市内房</b><br>境地区（境川沿い）"},
+{lat:35.324061,lng:138.607652,note:"2025/10/20富士宮市北山</b><br>北山工業団地周辺"},
+{lat:35.221296,lng:138.53825,note:"2025/10/22富士宮市内房</b><br>境地区"},
+{lat:35.29471,lng:138.564482,note:"2025/10/22富士宮市精進川</b><br>精進川地区"},
+{lat:35.203826,lng:138.549207,note:"2025/10/25富士宮市内房</b><br>瓜島地区"},
+{lat:35.199215,lng:138.549636,note:"2025/10/26富士宮市内房</b><br>瓜島地区"},
+{lat:35.19419,lng:138.54918,note:"2025/10/26富士宮市内房</b><br>尾崎地区"},
+{lat:35.200301,lng:138.553245,note:"2025/10/26富士宮市内房</b><br>瓜島地区"},
+{lat:35.226483,lng:138.540431,note:"2025/10/30富士宮市下稲子</b><br>下稲子地区"},
+{lat:35.201364,lng:138.544432,note:"2025/10/30富士宮市内房</b><br>瓜島地区"},
+{lat:35.199615,lng:138.576123,note:"2025/10/30富士宮市羽鮒</b><br>羽鮒地区"},
+{lat:35.196265,lng:138.573809,note:"2025/11/1富士宮市羽鮒</b><br>宮バス「楓の丘」バス停付近"},
+{lat:35.20927,lng:138.573535,note:"2025/11/12富士宮市羽鮒</b><br>安居山との境界付近"},
+{lat:35.312433,lng:138.571301,note:"2025/11/13富士宮市佐折</b><br>新大沢橋付近"},
+{lat:35.233846,lng:138.641742,note:"2025/11/13富士宮市大岩</b><br>忠霊塔付近"},
+{lat:35.249181,lng:138.65258,note:"2025/11/13富士宮市村山</b><br>浅間神社西側"},
+{lat:35.237337,lng:138.652128,note:"2025/11/13富士宮市小泉</b><br>小泉地内"},
+{lat:35.321595,lng:138.589372,note:"2025/11/14富士宮市上井出</b><br>西富士中学校付近"},
+{lat:35.19884,lng:138.575527,note:"2025/11/17富士宮市羽鮒</b><br>芝川中学校北側グラウンド付近"},
+{lat:35.32279,lng:138.587895,note:"2025/11/20富士宮市上井出</b><br>西富士中学校付近"},
+{lat:35.320318,lng:138.591054,note:"2025/11/22富士宮市上井出</b><br>西富士中学校グラウンド北側付近"},
+{lat:35.316993,lng:138.616393,note:"2025/12/15富士宮市北山</b><br>上井出第４区、北山第１３区、精進川第１区の入会山付近"},
+{lat:35.304311,lng:138.626558,note:"2026/1/6富士宮市北山</b><br>北山インター北側２００ｍ付近"},
+{lat:35.318577,lng:138.584853,note:"2026/1/8富士宮市佐折</b><br>新大沢橋北側１５０ｍ付近"},
+{lat:35.201499,lng:138.543835,note:"2026/1/14富士宮市内房</b><br>尾崎トンネル西側４５０ｍ付近"},
+{lat:35.320758,lng:138.589797,note:"2026/2/27富士宮市上井出</b><br>西富士中学校北側付近"},
+{lat:35.209559,lng:138.625271,note:"2026/3/17富士宮市黒田</b><br>潤井川河川敷グラウンド南東付近"},
+{lat:35.243493,lng:138.52803,note:"2026/3/23富士宮市上稲子</b><br>池の谷バス停西側付近"}
+];
+
+        const bearPins = [];
+
+        function createBearMarkers() {
+            bearSpots.forEach((spot, idx) => {
+                if (spot.lat <= bounds.nw.lat && spot.lat >= bounds.se.lat &&
+                    spot.lng >= bounds.nw.lng && spot.lng <= bounds.se.lng) {
+                    
+                    const group = new THREE.Group();
+                    const pos = coordsToScenePos(spot.lat, spot.lng);
+                    const terrainY = getTerrainYAt(pos.x, pos.z);
+
+                    
+                    const ringGeo = new THREE.RingGeometry(0, 3.5, 32);
+                    const ringMat = new THREE.MeshBasicMaterial({ color: 0xd9534f, side: THREE.DoubleSide, transparent: true, opacity: 0.5 });
+                    const ringMesh = new THREE.Mesh(ringGeo, ringMat);
+                    ringMesh.rotateX(-Math.PI / 2);
+                    group.add(ringMesh);
+
+                    
+                    const coneGeo = new THREE.ConeGeometry(2, 7, 6);
+                    const coneMat = new THREE.MeshStandardMaterial({ 
+                        color: 0x222222, roughness: 0.5, metalness: 0.5, emissive: 0x331100
+                    });
+                    const coneMesh = new THREE.Mesh(coneGeo, coneMat);
+                    coneMesh.position.y = 3.5;
+                    group.add(coneMesh);
+
+                    
+                    const stripeGeo = new THREE.CylinderGeometry(1.2, 1.4, 1.5, 6);
+                    const stripeMat = new THREE.MeshBasicMaterial({ color: 0xffcc00 });
+                    const stripeMesh = new THREE.Mesh(stripeGeo, stripeMat);
+                    stripeMesh.position.y = 3.0;
+                    group.add(stripeMesh);
+
+                    group.position.set(pos.x, terrainY, pos.z);
+                    
+                    
+                    group.userData = { 
+                        note: spot.note,
+                        isBearMarker: true
+                    };
+
+                    scene.add(group);
+                    bearPins.push(group);
+                }
+            });
+        }
+
+        const rawWidth = tileWidthCount * 1024;
+        const rawHeight = tileHeightCount * 1024;
+        const MAX_CANVAS_SIZE = 2560; 
+        
+        let scaleFactor = 1.0;
+        if (rawWidth > MAX_CANVAS_SIZE || rawHeight > MAX_CANVAS_SIZE) {
+            scaleFactor = MAX_CANVAS_SIZE / Math.max(rawWidth, rawHeight);
+        }
+
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        canvas.width = Math.floor(rawWidth * scaleFactor); 
+        canvas.height = Math.floor(rawHeight * scaleFactor);
+
+        const hillshadeCanvas = document.createElement('canvas');
+        const hillshadeCtx = hillshadeCanvas.getContext('2d');
+        hillshadeCanvas.width = canvas.width; 
+        hillshadeCanvas.height = canvas.height;
+
+        const stdCanvas = document.createElement('canvas');
+        const stdCtx = stdCanvas.getContext('2d');
+        stdCanvas.width = canvas.width; 
+        stdCanvas.height = canvas.height;
+
+        const demCanvas = document.createElement('canvas');
+        const demCtx = demCanvas.getContext('2d');
+        demCanvas.width = tileWidthCount * 256; 
+        demCanvas.height = tileHeightCount * 256;
+
+        let loadedCount = 0;
+        const totalTiles = tileWidthCount * tileHeightCount;
+        const totalTasks = (totalTiles * 2) + (totalTiles * 16) + 1; 
+
+        let targetPos = coordsToScenePos(centerCoords.lat, centerCoords.lng);
+        let baseTargetY = 15; 
+        let demDataGlobal = null; 
+
+        const imgOverlay = new Image();
+        let texture = null;
+        imgOverlay.crossOrigin = "anonymous";
+        imgOverlay.src = overlayImgUrl;
+        imgOverlay.onload = () => { checkProgress(); };
+
+        function updateTextureCanvas() {
+            const currentOpacity = parseFloat(document.getElementById('opacity-slider').value) / 100;
+            
+            ctx.fillStyle = "#ffffff"; 
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            ctx.globalAlpha = OPACITY_HILLSHADE; 
+            ctx.drawImage(hillshadeCanvas, 0, 0, canvas.width, canvas.height);
+            
+            ctx.globalAlpha = OPACITY_STD; 
+            ctx.globalCompositeOperation = "multiply"; 
+            ctx.drawImage(stdCanvas, 0, 0, canvas.width, canvas.height);
+            
+            ctx.globalCompositeOperation = "source-over"; 
+            ctx.globalAlpha = 1.0;
+
+            const startX = (((overlayBounds.nw.lng - minLng) / totalLngWidth) * rawWidth) * scaleFactor;
+            const startY = (((maxLat - overlayBounds.nw.lat) / totalLatHeight) * rawHeight) * scaleFactor;
+            const endX = (((overlayBounds.se.lng - minLng) / totalLngWidth) * rawWidth) * scaleFactor;
+            const endY = (((maxLat - overlayBounds.se.lat) / totalLatHeight) * rawHeight) * scaleFactor;
+            
+            ctx.globalAlpha = currentOpacity; 
+            ctx.drawImage(imgOverlay, startX, startY, endX - startX, endY - startY);
+            ctx.globalAlpha = 1.0; 
+
+            if (texture) texture.needsUpdate = true;
+        }
+
+        for (let ty = minY; ty <= maxY; ty++) {
+            for (let tx = minX; tx <= maxX; tx++) {
+                const offsetX2x = (tx - minX) * 1024 * scaleFactor; 
+                const offsetY2x = (ty - minY) * 1024 * scaleFactor;
+                const size2x = 1024 * scaleFactor;
+                const offsetX1x = (tx - minX) * 256;  
+                const offsetY1x = (ty - minY) * 256;
+
+                const imgHillshade = new Image();
+                imgHillshade.crossOrigin = "anonymous";
+                imgHillshade.src = `https://cyberjapandata.gsi.go.jp/xyz/hillshademap/${ZOOM}/${tx}/${ty}.png`;
+                imgHillshade.onload = () => { 
+                    hillshadeCtx.drawImage(imgHillshade, offsetX2x, offsetY2x, size2x, size2x); 
+                    checkProgress(); 
+                };
+
+                const imgDem = new Image();
+                imgDem.crossOrigin = "anonymous";
+                imgDem.src = `https://cyberjapandata.gsi.go.jp/xyz/dem_png/${ZOOM}/${tx}/${ty}.png`;
+                imgDem.onload = () => { 
+                    demCtx.drawImage(imgDem, offsetX1x, offsetY1x, 256, 256); 
+                    checkProgress(); 
+                };
+
+                const pMinX = tx * 4; 
+                const pMinY = ty * 4;
+                for (let dy = 0; dy < 4; dy++) {
+                    for (let dx = 0; dx < 4; dx++) {
+                        const subOffsetX = offsetX2x + (dx * 256 * scaleFactor);
+                        const subOffsetY = offsetY2x + (dy * 256 * scaleFactor);
+                        const subSize = 256 * scaleFactor;
+
+                        const imgStd = new Image();
+                        imgStd.crossOrigin = "anonymous";
+                        imgStd.src = `https://cyberjapandata.gsi.go.jp/xyz/std/${STD_ZOOM}/${pMinX + dx}/${pMinY + dy}.png`;
+                        imgStd.onload = () => { 
+                            stdCtx.drawImage(imgStd, subOffsetX, subOffsetY, subSize, subSize); 
+                            checkProgress(); 
+                        };
+                    }
+                }
+            }
+        }
+
+        function checkProgress() {
+            loadedCount++;
+            const percent = Math.floor((loadedCount / totalTasks) * 100);
+            document.getElementById('loading-text').innerText = `3D地図データを読み込み中... (${percent}%)`;
+            document.getElementById('loading-bar').style.width = `${percent}%`;
+
+            if (loadedCount === totalTasks) { 
+                updateTextureCanvas(); 
+                applyDataToTerrain(); 
+                
+                const screen = document.getElementById('loading-screen');
+                screen.style.opacity = '0';
+                setTimeout(() => { screen.style.visibility = 'hidden'; }, 500);
+            }
+        }
+
+        function getElevation(r, g, b) {
+            const x = r * 65536 + g * 256 + b;
+            return x < 8388608 ? x * 0.01 : (x - 16777216) * 0.01;
+        }
+
+        function getTerrainYAt(x, z) {
+            if (!demDataGlobal) return 15;
+            const percentX = (x + sceneWidth / 2) / sceneWidth;
+            const percentY = (z + sceneHeight / 2) / sceneHeight;
+            
+            const pixelX = Math.max(0, Math.min(Math.floor(percentX * demCanvas.width), demCanvas.width - 2));
+            const pixelY = Math.max(0, Math.min(Math.floor(percentY * demCanvas.height), demCanvas.height - 2));
+            const idx = (pixelY * demCanvas.width + pixelX) * 4;
+            
+            if (demDataGlobal[idx] === undefined || (demDataGlobal[idx] === 128 && demDataGlobal[idx+1] === 0 && demDataGlobal[idx+2] === 0)) {
+                return 0; 
+            }
+            return getElevation(demDataGlobal[idx], demDataGlobal[idx+1], demDataGlobal[idx+2]) * ELEVATION_SCALE;
+        }
+
+        function applyDataToTerrain() {
+            texture = new THREE.CanvasTexture(canvas);
+            texture.minFilter = THREE.LinearFilter;
+            material.map = texture; 
+            material.needsUpdate = true;
+
+            demDataGlobal = demCtx.getImageData(0, 0, demCanvas.width, demCanvas.height).data;
+            const posAttr = geometry.attributes.position;
+            
+            for (let i = 0; i < posAttr.count; i++) { 
+                posAttr.setY(i, getTerrainYAt(posAttr.getX(i), posAttr.getZ(i))); 
+            }
+            
+            baseTargetY = getTerrainYAt(targetPos.x, targetPos.z);
+            geometry.computeVertexNormals(); 
+            posAttr.needsUpdate = true;
+
+            createCoolMarker(); 
+            createBearMarkers(); 
+            updateCameraPosition();
+        }
+
+        const rotateSlider = document.getElementById('rotate-slider');
+        const heightSlider = document.getElementById('height-slider');
+        const pitchSlider = document.getElementById('pitch-slider');
+        const zoomSlider = document.getElementById('zoom-slider');
+        const opacitySlider = document.getElementById('opacity-slider');
+
+        const labelRotate = document.getElementById('label-rotate');
+        const labelHeight = document.getElementById('label-height');
+        const labelPitch = document.getElementById('label-pitch');
+        const labelZoom = document.getElementById('label-zoom');
+        const labelOpacity = document.getElementById('label-opacity');
+        
+        function updateCameraPosition() {
+            const cameraDistance = 680 - parseFloat(zoomSlider.value);         
+            const pitchRad = (parseFloat(pitchSlider.value) * Math.PI) / 180;
+            
+            const verticalOffset = cameraDistance * Math.sin(pitchRad); 
+            const horizontalRadius = cameraDistance * Math.cos(pitchRad);
+            const angleRad = (parseFloat(rotateSlider.value) * Math.PI) / 180;
+            const currentTargetY = baseTargetY + parseFloat(heightSlider.value);
+
+            camera.position.set(
+                targetPos.x + horizontalRadius * Math.sin(angleRad),
+                currentTargetY + verticalOffset,
+                targetPos.z + horizontalRadius * Math.cos(angleRad)
+            );
+            camera.lookAt(targetPos.x, currentTargetY, targetPos.z);
+            
+            labelRotate.innerText = `水平回転:${rotateSlider.value}°`;
+            labelHeight.innerText = `上下移動:${heightSlider.value}`;
+            labelPitch.innerText = `仰角:${pitchSlider.value}°`;
+            labelZoom.innerText = `拡大縮小:${zoomSlider.value}`;
+        }
+
+        rotateSlider.addEventListener('input', updateCameraPosition);
+        heightSlider.addEventListener('input', updateCameraPosition);
+        pitchSlider.addEventListener('input', updateCameraPosition);
+        zoomSlider.addEventListener('input', updateCameraPosition);
+        opacitySlider.addEventListener('input', () => {
+            labelOpacity.innerText = `画像透過度:${opacitySlider.value}%`; 
+            updateTextureCanvas();
+        });
+
+        
+        const toggleUiBtn = document.getElementById('toggle-ui-btn');
+        const uiContainer = document.getElementById('ui-container');
+        const btnCloseUi = document.getElementById('btn-close-ui');
+
+        toggleUiBtn.addEventListener('click', () => {
+            uiContainer.classList.toggle('hidden');
+        });
+
+        btnCloseUi.addEventListener('click', () => {
+            uiContainer.classList.add('hidden');
+        });
+
+        let watchId = null; 
+        const geoBtn = document.getElementById('btn-geolocation');
+
+        geoBtn.addEventListener('click', () => {
+            if (watchId !== null) {
+                navigator.geolocation.clearWatch(watchId);
+                watchId = null;
+                geoBtn.classList.remove('active');
+                geoBtn.innerText = "現在位置";
+                if (currentPosGroup) currentPosGroup.visible = false;
+                return;
+            }
+
+            if (!navigator.geolocation) {
+                geoBtn.innerText = "非対応";
+                return;
+            }
+
+            geoBtn.classList.add('active');
+            geoBtn.innerText = "追跡中";
+
+            watchId = navigator.geolocation.watchPosition(
+                (position) => {
+                    const userLat = position.coords.latitude;
+                    const userLng = position.coords.longitude;
+
+                    if (userLat > bounds.nw.lat || userLat < bounds.se.lat || 
+                        userLng < bounds.nw.lng || userLng > bounds.se.lng) {
+                        geoBtn.innerText = "範囲外";
+                        navigator.geolocation.clearWatch(watchId);
+                        watchId = null;
+                        geoBtn.classList.remove('active');
+                        if (currentPosGroup) currentPosGroup.visible = false;
+                        return;
+                    }
+
+                    geoBtn.innerText = "追跡中";
+
+                    const newPos = coordsToScenePos(userLat, userLng);
+                    targetPos.x = newPos.x;
+                    targetPos.z = newPos.z;
+                    baseTargetY = getTerrainYAt(targetPos.x, targetPos.z);
+
+                    if (currentPosGroup) {
+                        currentPosGroup.position.set(targetPos.x, baseTargetY, targetPos.z);
+                        currentPosGroup.visible = true;
+                    }
+                    updateCameraPosition();
+                },
+                (error) => {
+                    geoBtn.innerText = "エラー";
+                    navigator.geolocation.clearWatch(watchId);
+                    watchId = null;
+                    geoBtn.classList.remove('active');
+                    if (currentPosGroup) currentPosGroup.visible = false;
+                },
+                { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+            );
+        });
+
+        
+        const raycaster = new THREE.Raycaster();
+        const mouse = new THREE.Vector2();
+
+        const popup = document.getElementById('bear-popup');
+        const popupContent = document.getElementById('bear-popup-content');
+        const popupClose = document.getElementById('bear-popup-close');
+
+        
+        popupClose.addEventListener('click', () => {
+            popup.classList.remove('show');
+        });
+
+        
+        window.addEventListener('pointerdown', onPointerDown);
+
+        let pointerStartX = 0;
+        let pointerStartY = 0;
+
+        function onPointerDown(event) {
+            
+            if (event.target.closest('#ui-container') || 
+                event.target.closest('#toggle-ui-btn') || 
+                event.target.closest('#bear-popup')) {
+                return;
+            }
+            
+            pointerStartX = event.clientX;
+            pointerStartY = event.clientY;
+
+            
+            window.addEventListener('pointerup', onPointerUp);
+        }
+
+        function onPointerUp(event) {
+            window.removeEventListener('pointerup', onPointerUp);
+
+            
+            const diffX = Math.abs(event.clientX - pointerStartX);
+            const diffY = Math.abs(event.clientY - pointerStartY);
+            if (diffX > 5 || diffY > 5) return;
+
+            
+            mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+
+            raycaster.setFromCamera(mouse, camera);
+
+            
+            const intersects = raycaster.intersectObjects(bearPins, true);
+
+            if (intersects.length > 0) {
+                
+                let obj = intersects[0].object;
+                let matchedMarker = null;
+
+                while (obj) {
+                    if (obj.userData && obj.userData.isBearMarker) {
+                        matchedMarker = obj;
+                        break;
+                    }
+                    obj = obj.parent;
+                }
+
+                if (matchedMarker) {
+                    
+                    popupContent.innerHTML = matchedMarker.userData.note;
+                    popup.classList.add('show');
+                }
+            }
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            if (currentPosGroup && currentPosGroup.visible) {
+                const time = Date.now() * 0.003;
+                arrowMesh.position.y = 6.0 + Math.sin(time) * 0.4;
+            }
+            
+            
+            bearPins.forEach((pin, index) => {
+                pin.rotation.y += 0.01 + (index * 0.002);
+            });
+
+            renderer.render(scene, camera);
+        }
+        animate();
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+    </script>
+</body>
+</html>
